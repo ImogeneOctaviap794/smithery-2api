@@ -25,6 +25,7 @@ class SmitheryProvider(BaseProvider):
             limits=httpx.Limits(max_keepalive_connections=10, max_connections=100)
         )
         self.cookie_index = 0
+        self.current_cookie_id = None  # 记录当前使用的 cookie ID
     
     async def __aenter__(self):
         return self
@@ -33,16 +34,43 @@ class SmitheryProvider(BaseProvider):
         await self.client.aclose()
 
     def _get_cookie(self) -> str:
-        """从配置中轮换获取一个格式正确的 Cookie 字符串。"""
-        if not settings.AUTH_COOKIES:
-            raise HTTPException(
-                status_code=503, 
-                detail="服务暂时不可用：未配置任何 Cookie。请通过管理页面添加 Cookie。"
-            )
-        
-        auth_cookie_obj = settings.AUTH_COOKIES[self.cookie_index]
-        self.cookie_index = (self.cookie_index + 1) % len(settings.AUTH_COOKIES)
-        return auth_cookie_obj.header_cookie_string
+        """从数据库轮换获取 Cookie 并记录使用"""
+        try:
+            from app.db.database import SessionLocal
+            from app.db import crud
+            
+            db = SessionLocal()
+            try:
+                active_cookies = crud.get_active_cookies(db)
+                
+                if not active_cookies:
+                    # 回退到环境变量
+                    if settings.AUTH_COOKIES:
+                        auth_cookie_obj = settings.AUTH_COOKIES[self.cookie_index]
+                        self.cookie_index = (self.cookie_index + 1) % len(settings.AUTH_COOKIES)
+                        self.current_cookie_id = None
+                        return auth_cookie_obj.header_cookie_string
+                    else:
+                        raise HTTPException(
+                            status_code=503,
+                            detail="服务暂时不可用：未配置任何 Cookie。"
+                        )
+                
+                # 轮询选择
+                db_cookie = active_cookies[self.cookie_index % len(active_cookies)]
+                self.cookie_index = (self.cookie_index + 1) % len(active_cookies)
+                self.current_cookie_id = db_cookie.id
+                
+                # 构造 AuthCookie 对象
+                from app.core.config import AuthCookie
+                auth_cookie = AuthCookie(db_cookie.cookie_data)
+                
+                return auth_cookie.header_cookie_string
+            finally:
+                db.close()
+        except Exception as e:
+            logger.error(f"获取 Cookie 失败: {e}")
+            raise HTTPException(status_code=503, detail=f"获取 Cookie 失败: {str(e)}")
 
     def _convert_messages_to_smithery_format(self, openai_messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
@@ -80,6 +108,9 @@ class SmitheryProvider(BaseProvider):
         async def stream_generator() -> AsyncGenerator[bytes, None]:
             request_id = f"chatcmpl-{uuid.uuid4()}"
             model = request_data.get("model", "claude-haiku-4.5")
+            start_time = time.time()
+            cookie_id = self.current_cookie_id
+            completion_tokens = 0
             
             try:
                 # 3. 使用转换后的消息列表准备请求体
@@ -114,6 +145,7 @@ class SmitheryProvider(BaseProvider):
                                 if data.get("type") == "text-delta":
                                     delta_content = data.get("delta", "")
                                     if delta_content:
+                                        completion_tokens += len(delta_content)  # 粗略统计
                                         chunk_data = create_chat_completion_chunk(request_id, model, delta_content)
                                         yield create_sse_data(chunk_data)
                             except json.JSONDecodeError:
@@ -124,6 +156,10 @@ class SmitheryProvider(BaseProvider):
                 final_chunk = create_chat_completion_chunk(request_id, model, "", "stop")
                 yield create_sse_data(final_chunk)
                 yield DONE_CHUNK
+                
+                # 6. 记录调用日志
+                duration_ms = int((time.time() - start_time) * 1000)
+                self._log_api_call(cookie_id, model, len(str(messages_from_client)), completion_tokens, "success", None, duration_ms)
 
             except Exception as e:
                 logger.error(f"处理流时发生错误: {e}", exc_info=True)
@@ -131,6 +167,10 @@ class SmitheryProvider(BaseProvider):
                 error_chunk = create_chat_completion_chunk(request_id, model, error_message, "stop")
                 yield create_sse_data(error_chunk)
                 yield DONE_CHUNK
+                
+                # 记录失败日志
+                duration_ms = int((time.time() - start_time) * 1000)
+                self._log_api_call(cookie_id, model, len(str(messages_from_client)), 0, "error", str(e), duration_ms)
 
         return StreamingResponse(
             stream_generator(), 
@@ -169,6 +209,38 @@ class SmitheryProvider(BaseProvider):
             "model": model,
             "systemPrompt": "You are a helpful assistant."
         }
+    
+    def _log_api_call(self, cookie_id, model, prompt_tokens, completion_tokens, status, error_message, duration_ms):
+        """记录 API 调用日志到数据库"""
+        if not cookie_id:
+            return
+        
+        try:
+            from app.db.database import SessionLocal
+            from app.db import crud
+            
+            db = SessionLocal()
+            try:
+                # 创建调用日志
+                crud.create_call_log(
+                    db=db,
+                    cookie_id=cookie_id,
+                    model=model,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    status=status,
+                    error_message=error_message,
+                    duration_ms=duration_ms
+                )
+                
+                # 更新 Cookie 使用计数
+                crud.increment_cookie_usage(db, cookie_id)
+                
+                logger.info(f"记录调用日志: Cookie#{cookie_id}, Model={model}, Status={status}")
+            finally:
+                db.close()
+        except Exception as e:
+            logger.error(f"记录调用日志失败: {e}")
 
     async def get_models(self) -> JSONResponse:
         # 检查是否有可用的 Cookie
