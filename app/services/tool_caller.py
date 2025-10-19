@@ -2,7 +2,7 @@ import json
 import logging
 import random
 from typing import List, Dict, Any
-import cloudscraper
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +13,7 @@ class ToolCaller:
             "profile": "joyous-gull-NeZ2gW",
             "api_key": "fe5676be-931d-42e1-b5c9-90e94dce45ae"
         }
-        self.scraper = cloudscraper.create_scraper()
+        self.client = httpx.AsyncClient(timeout=30.0)
 
     def get_tool_definitions(self) -> List[Dict[str, Any]]:
         # 从情报中提取的工具定义
@@ -45,13 +45,13 @@ class ToolCaller:
                     "id": random.randint(1, 100)
                 }
                 
-                response = self.scraper.post(self.mcp_url, params=self.mcp_params, json=payload)
+                response = await self.client.post(self.mcp_url, params=self.mcp_params, json=payload)
                 response.raise_for_status()
                 
                 result_content = "No content returned."
-                for line in response.iter_lines():
-                    if line.startswith(b"data:"):
-                        content_str = line[len(b"data:"):].strip().decode('utf-8', errors='ignore')
+                async for line in response.aiter_lines():
+                    if line.startswith("data:"):
+                        content_str = line[5:].strip()
                         if content_str == "[DONE]":
                             break
                         try:
