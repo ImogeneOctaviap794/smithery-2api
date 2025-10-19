@@ -12,7 +12,7 @@ from app.core.config import settings
 from app.providers.base_provider import BaseProvider
 from app.utils.sse_utils import create_sse_data, create_chat_completion_chunk, DONE_CHUNK
 
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - [%(levelname)s] - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - [%(levelname)s] - %(message)s')
 logger = logging.getLogger(__name__)
 
 class SmitheryProvider(BaseProvider):
@@ -100,7 +100,6 @@ class SmitheryProvider(BaseProvider):
                         response.raise_for_status()
 
                     # 4. 异步流式处理 - 逐行实时转发
-                    chunk_count = 0
                     async for line in response.aiter_lines():
                         if not line:
                             continue
@@ -115,13 +114,11 @@ class SmitheryProvider(BaseProvider):
                                 if data.get("type") == "text-delta":
                                     delta_content = data.get("delta", "")
                                     if delta_content:
-                                        chunk_count += 1
-                                        logger.debug(f"[流式] 收到第 {chunk_count} 块，长度: {len(delta_content)} 字符")
                                         chunk_data = create_chat_completion_chunk(request_id, model, delta_content)
                                         yield create_sse_data(chunk_data)
                             except json.JSONDecodeError:
-                                if content:
-                                    logger.debug(f"无法解析 SSE: {content[:100]}")
+                                # 静默跳过无法解析的数据
+                                pass
                 
                 # 5. 发送结束标志
                 final_chunk = create_chat_completion_chunk(request_id, model, "", "stop")
