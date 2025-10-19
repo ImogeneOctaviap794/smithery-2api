@@ -5,7 +5,7 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 from datetime import datetime
 
-from app.db.models import SmitheryCookie
+from app.db.models import SmitheryCookie, APICallLog
 
 logger = logging.getLogger(__name__)
 
@@ -121,5 +121,57 @@ def get_cookie_count(db: Session) -> dict:
         "total": total,
         "active": active,
         "inactive": inactive
+    }
+
+def increment_cookie_usage(db: Session, cookie_id: int) -> None:
+    """增加 Cookie 使用计数"""
+    db_cookie = get_cookie_by_id(db, cookie_id)
+    if db_cookie:
+        db_cookie.usage_count += 1
+        db_cookie.last_used_at = datetime.utcnow()
+        db.commit()
+
+def create_call_log(
+    db: Session,
+    cookie_id: int,
+    model: str,
+    prompt_tokens: int = 0,
+    completion_tokens: int = 0,
+    status: str = "success",
+    error_message: Optional[str] = None,
+    duration_ms: Optional[int] = None
+) -> APICallLog:
+    """创建 API 调用日志"""
+    log = APICallLog(
+        cookie_id=cookie_id,
+        model=model,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        status=status,
+        error_message=error_message,
+        duration_ms=duration_ms
+    )
+    db.add(log)
+    db.commit()
+    db.refresh(log)
+    return log
+
+def get_call_logs(db: Session, limit: int = 100, cookie_id: Optional[int] = None) -> List[APICallLog]:
+    """获取调用日志"""
+    query = db.query(APICallLog).order_by(APICallLog.created_at.desc())
+    if cookie_id:
+        query = query.filter(APICallLog.cookie_id == cookie_id)
+    return query.limit(limit).all()
+
+def get_call_stats(db: Session) -> dict:
+    """获取调用统计"""
+    total_calls = db.query(APICallLog).count()
+    success_calls = db.query(APICallLog).filter(APICallLog.status == "success").count()
+    error_calls = total_calls - success_calls
+    
+    return {
+        "total_calls": total_calls,
+        "success_calls": success_calls,
+        "error_calls": error_calls
     }
 

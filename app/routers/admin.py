@@ -89,6 +89,8 @@ async def get_cookies(
                 "name": c.name,
                 "cookie_data": c.cookie_data,
                 "is_active": c.is_active,
+                "usage_count": c.usage_count,
+                "last_used_at": c.last_used_at.isoformat() if c.last_used_at else None,
                 "created_at": c.created_at.isoformat(),
                 "updated_at": c.updated_at.isoformat()
             }
@@ -238,5 +240,38 @@ async def get_api_key(
     return {
         "success": True,
         "api_key": settings.API_MASTER_KEY or "未配置"
+    }
+
+# ==================== 调用日志端点 ====================
+
+@router.get("/call-logs")
+async def get_call_logs(
+    token: str = Depends(verify_admin_session),
+    db: Session = Depends(get_db),
+    limit: int = 100,
+    cookie_id: Optional[int] = None
+):
+    """获取 API 调用日志"""
+    logs = crud.get_call_logs(db, limit=limit, cookie_id=cookie_id)
+    call_stats = crud.get_call_stats(db)
+    
+    return {
+        "success": True,
+        "data": [
+            {
+                "id": log.id,
+                "cookie_id": log.cookie_id,
+                "cookie_name": log.cookie.name if log.cookie else "未知",
+                "model": log.model,
+                "prompt_tokens": log.prompt_tokens,
+                "completion_tokens": log.completion_tokens,
+                "status": log.status,
+                "error_message": log.error_message,
+                "duration_ms": log.duration_ms,
+                "created_at": log.created_at.isoformat()
+            }
+            for log in logs
+        ],
+        "stats": call_stats
     }
 

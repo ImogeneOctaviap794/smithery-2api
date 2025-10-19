@@ -107,3 +107,14 @@ async function getApiKey() {
     return await apiRequest(`${API_BASE}/api-key`);
 }
 
+/**
+ * 获取调用日志
+ */
+async function getCallLogs(limit = 100, cookieId = null) {
+    let url = `${API_BASE}/call-logs?limit=${limit}`;
+    if (cookieId) {
+        url += `&cookie_id=${cookieId}`;
+    }
+    return await apiRequest(url);
+}
+
