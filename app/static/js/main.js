@@ -332,19 +332,28 @@ function showNotification(message, type = 'info') {
 }
 
 /**
- * 格式化日期（简短）
+ * 格式化日期（简短）- 北京时间
  */
 function formatDateShort(dateString) {
-    const date = new Date(dateString);
+    if (!dateString) return '-';
+    
+    // 解析 UTC 时间
+    const utcDate = new Date(dateString.endsWith('Z') ? dateString : dateString + 'Z');
+    
+    // 获取北京时间的当前时刻
     const now = new Date();
-    const diff = now - date;
+    const bjNow = new Date(now.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }));
+    const bjDate = new Date(utcDate.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }));
+    
+    const diff = bjNow - bjDate;
     const seconds = Math.floor(diff / 1000);
     const minutes = Math.floor(seconds / 60);
     const hours = Math.floor(minutes / 60);
     const days = Math.floor(hours / 24);
     
     if (days > 7) {
-        return date.toLocaleDateString('zh-CN', {
+        return utcDate.toLocaleString('zh-CN', {
+            timeZone: 'Asia/Shanghai',
             month: '2-digit',
             day: '2-digit',
             hour: '2-digit',
@@ -356,6 +365,8 @@ function formatDateShort(dateString) {
         return `${hours}小时前`;
     } else if (minutes > 0) {
         return `${minutes}分钟前`;
+    } else if (seconds > 5) {
+        return `${seconds}秒前`;
     } else {
         return '刚刚';
     }
