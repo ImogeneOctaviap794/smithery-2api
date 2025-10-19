@@ -26,6 +26,12 @@ class SmitheryProvider(BaseProvider):
 
     def _get_cookie(self) -> str:
         """从配置中轮换获取一个格式正确的 Cookie 字符串。"""
+        if not settings.AUTH_COOKIES:
+            raise HTTPException(
+                status_code=503, 
+                detail="服务暂时不可用：未配置任何 Cookie。请通过管理页面添加 Cookie。"
+            )
+        
         auth_cookie_obj = settings.AUTH_COOKIES[self.cookie_index]
         self.cookie_index = (self.cookie_index + 1) % len(settings.AUTH_COOKIES)
         return auth_cookie_obj.header_cookie_string
@@ -71,11 +77,6 @@ class SmitheryProvider(BaseProvider):
                 # 3. 使用转换后的消息列表准备请求体
                 payload = self._prepare_payload(model, smithery_formatted_messages)
                 headers = self._prepare_headers()
-                
-                logger.info("===================== [REQUEST TO SMITHERY (Stateless)] =====================")
-                logger.info(f"URL: POST {settings.CHAT_API_URL}")
-                logger.info(f"PAYLOAD:\n{json.dumps(payload, indent=2, ensure_ascii=False)}")
-                logger.info("=====================================================================================")
 
                 # 使用 cloudscraper 发送请求
                 response = self.scraper.post(
@@ -87,31 +88,37 @@ class SmitheryProvider(BaseProvider):
                 )
 
                 if response.status_code != 200:
-                    logger.error("==================== [RESPONSE FROM SMITHERY (ERROR)] ===================")
-                    logger.error(f"STATUS CODE: {response.status_code}")
-                    logger.error(f"RESPONSE BODY:\n{response.text}")
-                    logger.error("=================================================================")
+                    logger.error(f"Smithery API 错误: {response.status_code} - {response.text[:200]}")
                 
                 response.raise_for_status()
 
-                # 4. 流式处理返回的数据 (此部分逻辑不变)
-                for line in response.iter_lines():
-                    if line.startswith(b"data:"):
-                        content = line[len(b"data:"):].strip()
-                        if content == b"[DONE]":
-                            break
-                        try:
-                            data = json.loads(content)
-                            if data.get("type") == "text-delta":
-                                delta_content = data.get("delta", "")
-                                chunk = create_chat_completion_chunk(request_id, model, delta_content)
-                                yield create_sse_data(chunk)
-                        except json.JSONDecodeError:
-                            if content:
-                                logger.warning(f"无法解析 SSE 数据块: {content}")
-                            continue
+                # 4. 真正的流式处理 - 立即转发，不缓冲
+                buffer = b""
+                for chunk in response.iter_content(chunk_size=None, decode_unicode=False):
+                    if not chunk:
+                        continue
+                    
+                    buffer += chunk
+                    # 按行分割并处理
+                    while b'\n' in buffer:
+                        line, buffer = buffer.split(b'\n', 1)
+                        line = line.strip()
+                        
+                        if line.startswith(b"data:"):
+                            content = line[5:].strip()  # 移除 'data:' 前缀
+                            if content == b"[DONE]":
+                                break
+                            try:
+                                data = json.loads(content)
+                                if data.get("type") == "text-delta":
+                                    delta_content = data.get("delta", "")
+                                    chunk_data = create_chat_completion_chunk(request_id, model, delta_content)
+                                    yield create_sse_data(chunk_data)
+                            except json.JSONDecodeError:
+                                if content:
+                                    logger.warning(f"无法解析 SSE: {content[:100]}")
                 
-                # 5. 无状态模式下，无需保存任何会话，直接发送结束标志
+                # 5. 发送结束标志
                 final_chunk = create_chat_completion_chunk(request_id, model, "", "stop")
                 yield create_sse_data(final_chunk)
                 yield DONE_CHUNK
@@ -126,25 +133,24 @@ class SmitheryProvider(BaseProvider):
         return StreamingResponse(stream_generator(), media_type="text/event-stream")
 
     def _prepare_headers(self) -> Dict[str, str]:
-        # 包含我们之前分析出的所有必要请求头
+        # 模拟真实浏览器请求头
         return {
             "Accept": "*/*",
-            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Accept-Language": "zh-CN,zh-TW;q=0.9,zh;q=0.8,en;q=0.7",
+            "Cache-Control": "no-cache",
             "Content-Type": "application/json",
             "Cookie": self._get_cookie(),
             "Origin": "https://smithery.ai",
+            "Pragma": "no-cache",
+            "Priority": "u=1, i",
             "Referer": "https://smithery.ai/playground",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "priority": "u=1, i",
-            "sec-ch-ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-            "sec-ch-ua-mobile": "?0",
-            "sec-ch-ua-platform": '"Windows"',
-            "sec-fetch-dest": "empty",
-            "sec-fetch-mode": "cors",
-            "sec-fetch-site": "same-origin",
-            "x-posthog-distinct-id": "5905f6b4-d74f-46b4-9b4f-9dbbccb29bee",
-            "x-posthog-session-id": "0199f71f-8c42-7f9a-ba3a-ff5999dd444a",
-            "x-posthog-window-id": "0199f71f-8c42-7f9a-ba3a-ff5ab5b20a8e",
+            "Sec-Ch-Ua": '"Google Chrome";v="141", "Not?A_Brand";v="8", "Chromium";v="141"',
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Sec-Ch-Ua-Platform": '"macOS"',
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-origin",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"
         }
 
     def _prepare_payload(self, model: str, messages: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -156,6 +162,13 @@ class SmitheryProvider(BaseProvider):
         }
 
     async def get_models(self) -> JSONResponse:
+        # 检查是否有可用的 Cookie
+        if not settings.AUTH_COOKIES:
+            raise HTTPException(
+                status_code=503,
+                detail="服务暂时不可用：未配置任何 Cookie。请通过管理页面 (http://localhost:8088/admin/) 添加 Cookie。"
+            )
+        
         model_data = {
             "object": "list",
             "data": [

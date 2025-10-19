@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dracula">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cookie 管理 - Smithery-2API</title>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-base-200">
+    <!-- 顶部导航栏 -->
+    <div class="navbar bg-base-100 shadow-lg">
+        <div class="flex-1">
+            <a class="btn btn-ghost text-xl">🔐 Smithery API Manager</a>
+        </div>
+        <div class="flex-none gap-2">
+            <button class="btn btn-ghost btn-sm" onclick="showApiKeyModal()">
+                🔑 API 密钥
+            </button>
+            <div class="dropdown dropdown-end">
+                <div tabindex="0" role="button" class="btn btn-ghost btn-circle avatar placeholder">
+                    <div class="bg-neutral text-neutral-content rounded-full w-10">
+                        <span class="text-xl">👤</span>
+                    </div>
+                </div>
+                <ul tabindex="0" class="mt-3 z-[1] p-2 shadow menu menu-sm dropdown-content bg-base-100 rounded-box w-52">
+                    <li><a onclick="logout()">🚪 退出登录</a></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- 主内容区 -->
+    <div class="container mx-auto p-6 max-w-7xl">
+        <!-- 统计卡片 -->
+        <div class="stats shadow w-full mb-6">
+            <div class="stat">
+                <div class="stat-figure text-primary">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block w-8 h-8 stroke-current">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path>
+                    </svg>
+                </div>
+                <div class="stat-title">总 Cookie 数</div>
+                <div class="stat-value text-primary" id="totalCount">0</div>
+                <div class="stat-desc">所有已添加的 Cookie</div>
+            </div>
+            
+            <div class="stat">
+                <div class="stat-figure text-success">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block w-8 h-8 stroke-current">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                    </svg>
+                </div>
+                <div class="stat-title">已启用</div>
+                <div class="stat-value text-success" id="activeCount">0</div>
+                <div class="stat-desc">当前正在使用</div>
+            </div>
+            
+            <div class="stat">
+                <div class="stat-figure text-warning">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block w-8 h-8 stroke-current">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                </div>
+                <div class="stat-title">已禁用</div>
+                <div class="stat-value text-warning" id="inactiveCount">0</div>
+                <div class="stat-desc">暂时停用的 Cookie</div>
+            </div>
+        </div>
+
+        <!-- 操作按钮 -->
+        <div class="mb-4 flex justify-between items-center">
+            <h2 class="text-2xl font-bold">Cookie 列表</h2>
+            <button class="btn btn-primary" onclick="showAddModal()">
+                ➕ 添加 Cookie
+            </button>
+        </div>
+
+        <!-- Cookie 列表表格 -->
+        <div class="card bg-base-100 shadow-xl">
+            <div class="card-body">
+                <div class="overflow-x-auto">
+                    <table class="table table-zebra w-full">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>名称</th>
+                                <th>状态</th>
+                                <th>创建时间</th>
+                                <th>更新时间</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cookieTableBody">
+                            <tr>
+                                <td colspan="6" class="text-center">
+                                    <span class="loading loading-spinner loading-lg"></span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 添加/编辑 Cookie 模态框 -->
+    <dialog id="cookieModal" class="modal">
+        <div class="modal-box w-11/12 max-w-2xl">
+            <h3 class="font-bold text-lg mb-4" id="modalTitle">添加 Cookie</h3>
+            <form id="cookieForm" class="space-y-4">
+                <input type="hidden" id="cookieId" />
+                
+                <div class="form-control">
+                    <label class="label">
+                        <span class="label-text">Cookie 名称</span>
+                    </label>
+                    <input 
+                        type="text" 
+                        id="cookieName" 
+                        placeholder="例如: Account-1"
+                        class="input input-bordered w-full" 
+                        required
+                    />
+                </div>
+                
+                <div class="form-control">
+                    <label class="label">
+                        <span class="label-text">Cookie 值</span>
+                    </label>
+                    <textarea 
+                        id="cookieData" 
+                        class="textarea textarea-bordered h-32 font-mono text-sm"
+                        placeholder='base64-eyJhY2Nlc3NfdG9rZW4i...'
+                        required
+                    ></textarea>
+                    <label class="label">
+                        <span class="label-text-alt">从浏览器 Cookie 中找到 sb-spjawbfpwezjfmicopsl-auth-token.0，复制其 value 值</span>
+                    </label>
+                </div>
+                
+                <div class="modal-action">
+                    <button type="button" class="btn" onclick="closeModal()">取消</button>
+                    <button type="submit" class="btn btn-primary">保存</button>
+                </div>
+            </form>
+        </div>
+        <form method="dialog" class="modal-backdrop">
+            <button>close</button>
+        </form>
+    </dialog>
+
+    <!-- API 密钥配置模态框 -->
+    <dialog id="apiKeyModal" class="modal">
+        <div class="modal-box">
+            <h3 class="font-bold text-lg mb-4">API 密钥配置</h3>
+            <div class="space-y-4">
+                <div class="alert alert-info">
+                    <span class="text-sm">此密钥用于客户端调用 API 时的认证</span>
+                </div>
+                <div class="form-control">
+                    <label class="label">
+                        <span class="label-text">当前 API 密钥</span>
+                    </label>
+                    <input 
+                        type="text" 
+                        id="currentApiKey" 
+                        class="input input-bordered font-mono"
+                        readonly
+                    />
+                </div>
+                <div class="alert alert-warning">
+                    <span class="text-xs">⚠️ 修改密钥需要重启服务并更新 .env 文件</span>
+                </div>
+            </div>
+            <div class="modal-action">
+                <button class="btn" onclick="closeApiKeyModal()">关闭</button>
+            </div>
+        </div>
+        <form method="dialog" class="modal-backdrop">
+            <button>close</button>
+        </form>
+    </dialog>
+
+    <!-- Toast 通知容器 -->
+    <div class="toast toast-top toast-end" id="toastContainer"></div>
+
+    <script src="/admin/js/auth.js"></script>
+    <script src="/admin/js/api.js"></script>
+    <script src="/admin/js/main.js"></script>
+</body>
+</html>
+

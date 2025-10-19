@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dracula">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理员登录 - Smithery Cookie Manager</title>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="card w-96 bg-base-100 shadow-2xl">
+        <div class="card-body">
+            <h2 class="card-title text-2xl font-bold text-center justify-center mb-4">
+                🔐 管理员登录
+            </h2>
+            <p class="text-center text-base-content/70 mb-4">
+                Smithery Cookie Manager
+            </p>
+            
+            <form id="loginForm" class="space-y-4">
+                <div class="form-control">
+                    <label class="label">
+                        <span class="label-text">管理密码</span>
+                    </label>
+                    <input 
+                        type="password" 
+                        id="password" 
+                        placeholder="请输入 API_MASTER_KEY"
+                        class="input input-bordered w-full" 
+                        required
+                        autocomplete="current-password"
+                    />
+                </div>
+                
+                <div id="errorMessage" class="alert alert-error hidden">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span id="errorText">密码错误</span>
+                </div>
+                
+                <div class="form-control mt-6">
+                    <button type="submit" class="btn btn-primary w-full" id="loginBtn">
+                        <span id="loginBtnText">登录</span>
+                        <span id="loginBtnLoader" class="loading loading-spinner loading-sm hidden"></span>
+                    </button>
+                </div>
+            </form>
+            
+            <div class="divider text-xs">Cookie 获取方法</div>
+            <div class="text-xs text-base-content/70 space-y-1">
+                <p>1. 登录 smithery.ai</p>
+                <p>2. F12 → Application → Cookies</p>
+                <p>3. 找到 <code class="text-primary">sb-spjawbfpwezjfmicopsl-auth-token.0</code></p>
+                <p>4. 复制其 value 值（base64-开头）</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="/admin/js/auth.js"></script>
+    <script>
+        // 如果已经登录，直接跳转到管理页面
+        if (localStorage.getItem('admin_token')) {
+            window.location.href = '/admin/index.html';
+        }
+
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const password = document.getElementById('password').value;
+            const errorDiv = document.getElementById('errorMessage');
+            const loginBtn = document.getElementById('loginBtn');
+            const loginBtnText = document.getElementById('loginBtnText');
+            const loginBtnLoader = document.getElementById('loginBtnLoader');
+            
+            // 隐藏错误信息
+            errorDiv.classList.add('hidden');
+            
+            // 显示加载状态
+            loginBtn.disabled = true;
+            loginBtnText.classList.add('hidden');
+            loginBtnLoader.classList.remove('hidden');
+            
+            try {
+                const response = await fetch('/api/admin/auth/verify', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ password })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    // 保存 token
+                    localStorage.setItem('admin_token', data.token);
+                    // 跳转到管理页面
+                    window.location.href = '/admin/index.html';
+                } else {
+                    throw new Error(data.detail || '登录失败');
+                }
+            } catch (error) {
+                console.error('登录失败:', error);
+                document.getElementById('errorText').textContent = error.message;
+                errorDiv.classList.remove('hidden');
+                
+                // 恢复按钮状态
+                loginBtn.disabled = false;
+                loginBtnText.classList.remove('hidden');
+                loginBtnLoader.classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
+

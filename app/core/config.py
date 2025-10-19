@@ -1,56 +1,33 @@
 import os
 import json
 import logging
+import base64
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List, Optional, Dict
 
 # 获取一个日志记录器实例
 logger = logging.getLogger(__name__)
 
+# 全局标志，用于避免循环导入
+_db_initialized = False
+
 class AuthCookie:
     """
     处理并生成 Smithery.ai 所需的认证 Cookie。
-    它将 .env 文件中的 JSON 字符串转换为一个标准的 HTTP Cookie 头部字符串。
+    直接使用浏览器中的 Cookie 值，格式：sb-spjawbfpwezjfmicopsl-auth-token.0=base64-xxx
+    不需要解码，直接传给上游
     """
-    def __init__(self, json_string: str):
-        try:
-            # 1. 解析从 .env 文件读取的 JSON 字符串
-            data = json.loads(json_string)
-            self.access_token = data.get("access_token")
-            self.refresh_token = data.get("refresh_token")
-            self.expires_at = data.get("expires_at", 0)
-            
-            if not self.access_token:
-                raise ValueError("Cookie JSON 中缺少 'access_token'")
-
-            # 2. 构造将要放入 Cookie header 的值部分 (它本身也是一个 JSON)
-            #    注意：这里我们只包含 Supabase auth 需要的核心字段
-            cookie_value_data = {
-                "access_token": self.access_token,
-                "refresh_token": self.refresh_token,
-                "token_type": data.get("token_type", "bearer"),
-                "expires_in": data.get("expires_in", 3600),
-                "expires_at": self.expires_at,
-                "user": data.get("user")
-            }
-            
-            # 3. 构造完整的 Cookie 键值对字符串
-            #    Smithery.ai 使用的 Supabase project_ref 是 'spjawbfpwezjfmicopsl'
-            project_ref = "spjawbfpwezjfmicopsl"
-            cookie_key = f"sb-{project_ref}-auth-token"
-            # 将值部分转换为紧凑的 JSON 字符串
-            cookie_value = json.dumps(cookie_value_data, separators=(',', ':'))
-            
-            # 最终用于 HTTP Header 的字符串，格式为 "key=value"
-            self.header_cookie_string = f"{cookie_key}={cookie_value}"
-
-        except json.JSONDecodeError as e:
-            raise ValueError(f"无法从提供的字符串中解析认证 JSON: {e}")
-        except Exception as e:
-            raise ValueError(f"初始化 AuthCookie 时出错: {e}")
+    def __init__(self, cookie_value: str):
+        # Cookie 名称
+        cookie_name = "sb-spjawbfpwezjfmicopsl-auth-token.0"
+        
+        # 直接构造完整的 Cookie 字符串，不解码
+        self.header_cookie_string = f"{cookie_name}={cookie_value}"
+        
+        logger.debug(f"初始化 Cookie: {cookie_name}={cookie_value[:50]}...")
 
     def __repr__(self):
-        return f"<AuthCookie expires_at={self.expires_at}>"
+        return f"<AuthCookie>"
 
 
 class Settings(BaseSettings):
@@ -84,21 +61,86 @@ class Settings(BaseSettings):
 
     def __init__(self, **values):
         super().__init__(**values)
-        # 从环境变量 SMITHERY_COOKIE_1, SMITHERY_COOKIE_2, ... 加载 cookies
+        self._load_cookies()
+    
+    def _load_cookies_from_env(self):
+        """从环境变量加载 Cookie（向后兼容）"""
+        cookies = []
         i = 1
         while True:
             cookie_str = os.getenv(f"SMITHERY_COOKIE_{i}")
             if cookie_str:
                 try:
-                    # 使用 AuthCookie 类来解析和处理 cookie 字符串
-                    self.AUTH_COOKIES.append(AuthCookie(cookie_str))
+                    cookies.append(AuthCookie(cookie_str))
+                    logger.info(f"从环境变量加载 SMITHERY_COOKIE_{i}")
                 except ValueError as e:
                     logger.warning(f"无法加载或解析 SMITHERY_COOKIE_{i}: {e}")
                 i += 1
             else:
                 break
+        return cookies
+    
+    def _load_cookies_from_db(self):
+        """从数据库加载启用的 Cookie"""
+        global _db_initialized
+        if not _db_initialized:
+            return []
         
-        if not self.AUTH_COOKIES:
-            raise ValueError("必须在 .env 文件中至少配置一个有效的 SMITHERY_COOKIE_1")
+        try:
+            from app.db.database import SessionLocal
+            from app.db import crud
+            
+            db = SessionLocal()
+            try:
+                db_cookies = crud.get_active_cookies(db)
+                cookies = []
+                for db_cookie in db_cookies:
+                    try:
+                        cookies.append(AuthCookie(db_cookie.cookie_data))
+                        logger.info(f"从数据库加载 Cookie: {db_cookie.name}")
+                    except ValueError as e:
+                        logger.warning(f"无法解析数据库中的 Cookie {db_cookie.name}: {e}")
+                return cookies
+            finally:
+                db.close()
+        except Exception as e:
+            logger.error(f"从数据库加载 Cookie 失败: {e}")
+            return []
+    
+    def _load_cookies(self):
+        """加载 Cookie：优先从数据库，否则从环境变量"""
+        # 先尝试从数据库加载
+        db_cookies = self._load_cookies_from_db()
+        
+        if db_cookies:
+            self.AUTH_COOKIES = db_cookies
+            logger.info(f"从数据库加载了 {len(db_cookies)} 个 Cookie")
+        else:
+            # 如果数据库没有，从环境变量加载
+            env_cookies = self._load_cookies_from_env()
+            self.AUTH_COOKIES = env_cookies
+            
+            if env_cookies:
+                logger.info(f"从环境变量加载了 {len(env_cookies)} 个 Cookie")
+            else:
+                logger.warning("未找到任何 Cookie 配置（数据库和环境变量均为空）")
+    
+    def reload_cookies(self):
+        """重新加载 Cookie"""
+        logger.info("重新加载 Cookie 配置...")
+        self._load_cookies()
+        logger.info(f"Cookie 重新加载完成，当前有 {len(self.AUTH_COOKIES)} 个可用")
 
 settings = Settings()
+
+def reload_cookies_from_db():
+    """全局函数：重新从数据库加载 Cookie"""
+    global settings
+    settings.reload_cookies()
+
+def mark_db_initialized():
+    """标记数据库已初始化"""
+    global _db_initialized
+    _db_initialized = True
+    # 初始化后立即尝试加载数据库中的 Cookie
+    settings.reload_cookies()
