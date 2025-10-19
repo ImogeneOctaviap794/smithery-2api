@@ -1,8 +1,8 @@
 <div align="center">
 
-# 🔐 smithery-2api
+# 🔐 smithery-2api-web
 
-**将 [Smithery.ai](https://smithery.ai/) AI 模型转换为 OpenAI API 格式**
+**将 [Smithery.ai](https://smithery.ai/) AI 模型转换为 OpenAI API 格式 + Web 管理界面**
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python Version](https://img.shields.io/badge/python-3.10+-brightgreen.svg)](https://www.python.org/)
@@ -27,8 +27,8 @@
 ### 1. 克隆项目
 
 ```bash
-git clone https://github.com/lzA6/smithery-2api.git
-cd smithery-2api
+git clone https://github.com/ImogeneOctaviap794/smithery-2api-web.git
+cd smithery-2api-web
 ```
 
 ### 2. 配置环境
@@ -110,7 +110,7 @@ for chunk in response:
 ## 📁 项目结构
 
 ```
-smithery-2api/
+smithery-2api-web/
 ├── app/
 │   ├── core/          # 配置管理
 │   ├── db/            # 数据库操作（SQLite）
