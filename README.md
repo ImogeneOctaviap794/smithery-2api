@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🔐 smithery-2api-web
+# smithery-2api-web
 
 **将 [Smithery.ai](https://smithery.ai/) AI 模型转换为 OpenAI API 格式 + Web 管理界面**
 
@@ -12,17 +12,17 @@
 
 ---
 
-## ✨ 核心特性
+## 核心特性
 
-- **🎨 Web 管理界面** - 可视化管理 Cookie，无需手动编辑配置文件
-- **🔐 API 密钥认证** - 安全的客户端访问控制
-- **🔄 多账号轮询** - 支持多个 Smithery Cookie 自动切换
-- **⚡ 极致流式响应** - httpx 异步 + HTTP/2，丝滑实时传输，零缓冲延迟
-- **🔌 OpenAI 兼容** - 完全兼容 OpenAI API 格式
-- **🚀 高性能异步** - 基于 httpx + HTTP/2 多路复用，低延迟高并发
-- **🐳 Docker 部署** - 一键启动服务
+- **Web 管理界面** - 可视化管理 Cookie，无需手动编辑配置文件
+- **API 密钥认证** - 安全的客户端访问控制  
+- **多账号轮询** - 支持多个 Smithery Cookie 自动切换
+- **极致流式响应** - httpx 异步 + HTTP/2，丝滑实时传输，零缓冲延迟
+- **OpenAI 兼容** - 完全兼容 OpenAI API 格式
+- **高性能异步** - 基于 httpx + HTTP/2 多路复用，低延迟高并发
+- **Docker 部署** - 一键启动服务
 
-## 🚀 快速开始
+## 快速开始
 
 ### 1. 克隆项目
 
@@ -64,7 +64,7 @@ docker-compose up -d
 4. 复制其 value 值（`base64-` 开头）
 5. 在管理页面点击"添加 Cookie"并粘贴
 
-## 📖 API 使用
+## API 使用
 
 ### cURL 示例
 
@@ -99,7 +99,7 @@ for chunk in response:
     print(chunk.choices[0].delta.content, end="")
 ```
 
-## 🎯 支持的模型
+## 支持的模型
 
 - `claude-haiku-4.5` / `claude-sonnet-4.5`
 - `gpt-5` / `gpt-5-mini` / `gpt-5-nano`
@@ -107,7 +107,7 @@ for chunk in response:
 - `grok-4-fast-reasoning` / `grok-4-fast-non-reasoning`
 - `glm-4.6` / `kimi-k2` / `deepseek-reasoner`
 
-## 🏗️ 技术架构
+## 技术架构
 
 ### 核心技术栈
 
@@ -177,7 +177,7 @@ chunked_transfer_encoding off; # 禁用分块编码缓冲
 | 并发能力 | 低（同步阻塞） | 高（异步非阻塞） |
 | 协议 | HTTP/1.1 | HTTP/2 |
 
-## 📁 项目结构
+## 项目结构
 
 ```
 smithery-2api-web/
@@ -195,14 +195,15 @@ smithery-2api-web/
 └── docker-compose.yml # Docker 配置
 ```
 
-## 🎨 管理界面
+## 管理界面
 
 - **深色主题** - Dracula 配色方案
 - **Cookie 管理** - 添加、编辑、删除、启用/禁用
+- **调用统计** - 显示每个 Cookie 的调用次数
+- **调用日志** - 查看所有API调用历史记录
 - **API 密钥查看** - 查看当前配置的密钥
-- **统计信息** - 实时显示 Cookie 状态
 
-## 🔧 配置说明
+## 配置说明
 
 ### 环境变量
 
@@ -217,7 +218,7 @@ smithery-2api-web/
 - 支持多个 Cookie 自动轮询
 - 可通过管理界面实时增删改
 
-## 🔐 安全建议
+## 安全建议
 
 1. 使用强密码作为 `API_MASTER_KEY`
 2. 不要在公网暴露管理页面
