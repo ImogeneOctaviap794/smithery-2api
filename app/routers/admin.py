@@ -1,6 +1,5 @@
 import json
 import logging
-import cloudscraper
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Body
 from fastapi.responses import JSONResponse

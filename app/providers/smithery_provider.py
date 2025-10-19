@@ -2,8 +2,7 @@ import json
 import time
 import logging
 import uuid
-import random
-import cloudscraper
+import httpx
 from typing import Dict, Any, AsyncGenerator, List
 
 from fastapi import HTTPException
@@ -11,18 +10,27 @@ from fastapi.responses import StreamingResponse, JSONResponse
 
 from app.core.config import settings
 from app.providers.base_provider import BaseProvider
-# 移除了不再使用的 SessionManager
-# from app.services.session_manager import SessionManager
 from app.utils.sse_utils import create_sse_data, create_chat_completion_chunk, DONE_CHUNK
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - [%(levelname)s] - %(message)s')
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - [%(levelname)s] - %(message)s')
 logger = logging.getLogger(__name__)
 
 class SmitheryProvider(BaseProvider):
     def __init__(self):
-        # self.session_manager = SessionManager() # 移除会话管理器
-        self.scraper = cloudscraper.create_scraper()
+        # 使用 httpx 异步客户端，启用 HTTP/2
+        self.client = httpx.AsyncClient(
+            http2=True,
+            timeout=httpx.Timeout(180.0, connect=10.0),
+            follow_redirects=True,
+            limits=httpx.Limits(max_keepalive_connections=10, max_connections=100)
+        )
         self.cookie_index = 0
+    
+    async def __aenter__(self):
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.client.aclose()
 
     def _get_cookie(self) -> str:
         """从配置中轮换获取一个格式正确的 Cookie 字符串。"""
@@ -78,45 +86,42 @@ class SmitheryProvider(BaseProvider):
                 payload = self._prepare_payload(model, smithery_formatted_messages)
                 headers = self._prepare_headers()
 
-                # 使用 cloudscraper 发送请求
-                response = self.scraper.post(
-                    settings.CHAT_API_URL, 
-                    headers=headers, 
-                    json=payload, 
-                    stream=True, 
-                    timeout=settings.API_REQUEST_TIMEOUT
-                )
-
-                if response.status_code != 200:
-                    logger.error(f"Smithery API 错误: {response.status_code} - {response.text[:200]}")
-                
-                response.raise_for_status()
-
-                # 4. 真正的流式处理 - 立即转发，不缓冲
-                buffer = b""
-                for chunk in response.iter_content(chunk_size=None, decode_unicode=False):
-                    if not chunk:
-                        continue
+                # 使用 httpx 异步发送请求，启用流式传输
+                async with self.client.stream(
+                    "POST",
+                    settings.CHAT_API_URL,
+                    headers=headers,
+                    json=payload,
+                ) as response:
                     
-                    buffer += chunk
-                    # 按行分割并处理
-                    while b'\n' in buffer:
-                        line, buffer = buffer.split(b'\n', 1)
-                        line = line.strip()
+                    if response.status_code != 200:
+                        error_text = await response.aread()
+                        logger.error(f"Smithery API 错误: {response.status_code} - {error_text[:200]}")
+                        response.raise_for_status()
+
+                    # 4. 异步流式处理 - 逐行实时转发
+                    chunk_count = 0
+                    async for line in response.aiter_lines():
+                        if not line:
+                            continue
                         
-                        if line.startswith(b"data:"):
-                            content = line[5:].strip()  # 移除 'data:' 前缀
-                            if content == b"[DONE]":
+                        # 立即处理，不积累
+                        if line.startswith("data:"):
+                            content = line[5:].strip()
+                            if content == "[DONE]":
                                 break
                             try:
                                 data = json.loads(content)
                                 if data.get("type") == "text-delta":
                                     delta_content = data.get("delta", "")
-                                    chunk_data = create_chat_completion_chunk(request_id, model, delta_content)
-                                    yield create_sse_data(chunk_data)
+                                    if delta_content:
+                                        chunk_count += 1
+                                        logger.debug(f"[流式] 收到第 {chunk_count} 块，长度: {len(delta_content)} 字符")
+                                        chunk_data = create_chat_completion_chunk(request_id, model, delta_content)
+                                        yield create_sse_data(chunk_data)
                             except json.JSONDecodeError:
                                 if content:
-                                    logger.warning(f"无法解析 SSE: {content[:100]}")
+                                    logger.debug(f"无法解析 SSE: {content[:100]}")
                 
                 # 5. 发送结束标志
                 final_chunk = create_chat_completion_chunk(request_id, model, "", "stop")
@@ -130,7 +135,14 @@ class SmitheryProvider(BaseProvider):
                 yield create_sse_data(error_chunk)
                 yield DONE_CHUNK
 
-        return StreamingResponse(stream_generator(), media_type="text/event-stream")
+        return StreamingResponse(
+            stream_generator(), 
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",  # 禁用 Nginx 缓冲
+            }
+        )
 
     def _prepare_headers(self) -> Dict[str, str]:
         # 模拟真实浏览器请求头

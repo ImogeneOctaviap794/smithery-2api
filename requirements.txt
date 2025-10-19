@@ -2,8 +2,7 @@ fastapi
 uvicorn[standard]
 pydantic-settings
 python-dotenv
-cloudscraper
+httpx[http2]
 cachetools
-httpx
 sqlalchemy
 aiofiles
