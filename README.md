@@ -63,13 +63,20 @@ docker-compose up -d
 3. 找到 `sb-spjawbfpwezjfmicopsl-auth-token.0` 和 `.1`（如果存在）
 4. 复制 Cookie 值：
    - 如果只有 `.0`：直接复制 value（`base64-` 开头）
-   - 如果有 `.0` 和 `.1`：复制两个值，用 `|` 连接，例如：`base64-part0|base64-part1`
+   - 如果有 `.0` 和 `.1`：
+     - 复制 `.0` 的完整值（含 `base64-` 前缀）
+     - 添加 `|` 分隔符
+     - 复制 `.1` 的完整值（**不含** `base64-` 前缀，直接拼接）
 5. 在管理页面点击"添加 Cookie"并粘贴
 
 **Cookie 示例**：
 ```
-单段：base64-eyJhY2Nlc3NfdG9rZW4i...
-多段：base64-eyJhY2Nlc3NfdG9rZW4i...|SI6eyJhdmF0YXJfdXJs...
+单段：
+base64-eyJhY2Nlc3NfdG9rZW4i...
+
+多段（注意.1段没有base64-前缀）：
+base64-eyJhY2Nlc3NfdG9rZW4i...|SI6eyJhdmF0YXJfdXJs...
+       ↑ .0段（含前缀）         ↑ .1段（不含前缀）
 ```
 
 ## API 使用

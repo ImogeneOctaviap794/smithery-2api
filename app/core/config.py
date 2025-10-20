@@ -14,28 +14,33 @@ _db_initialized = False
 class AuthCookie:
     """
     处理并生成 Smithery.ai 所需的认证 Cookie。
-    Cookie 可能包含多个分段（.0, .1 等），需要全部包含
+    Cookie 可能因为过长被分段存储，需要拼接成完整值
     """
     def __init__(self, cookie_value: str):
         """
         cookie_value 格式：
         - 单段：base64-xxx
-        - 多段（用 | 分隔）：base64-xxx|part1_value
+        - 多段（用 | 分隔）：base64-xxx|继续的部分（注意第二段没有base64-前缀）
+        
+        例如：
+        .0 = base64-eyJhY2Nlc...
+        .1 = SI6eyJhdmF0YXJf...
+        输入格式：base64-eyJhY2Nlc...|SI6eyJhdmF0YXJm...
+        拼接后：base64-eyJhY2Nlc...SI6eyJhdmF0YXJm...
         """
-        # 检查是否有多段
+        cookie_name = "sb-spjawbfpwezjfmicopsl-auth-token.0"
+        
+        # 检查是否有多段（用 | 分隔）
         if '|' in cookie_value:
             parts = cookie_value.split('|')
-            # 构造多段 Cookie
-            cookie_parts = []
-            for i, part in enumerate(parts):
-                cookie_parts.append(f"sb-spjawbfpwezjfmicopsl-auth-token.{i}={part}")
-            self.header_cookie_string = "; ".join(cookie_parts)
+            # 直接拼接所有段（第一段包含 base64- 前缀，后续段直接拼接）
+            complete_value = ''.join(part.strip() for part in parts)
+            self.header_cookie_string = f"{cookie_name}={complete_value}"
+            logger.debug(f"初始化多段Cookie，拼接后长度: {len(complete_value)}")
         else:
             # 单段 Cookie
-            cookie_name = "sb-spjawbfpwezjfmicopsl-auth-token.0"
-            self.header_cookie_string = f"{cookie_name}={cookie_value}"
-        
-        logger.debug(f"初始化 Cookie (长度: {len(self.header_cookie_string)})")
+            self.header_cookie_string = f"{cookie_name}={cookie_value.strip()}"
+            logger.debug(f"初始化单段Cookie，长度: {len(cookie_value)}")
 
     def __repr__(self):
         return f"<AuthCookie>"

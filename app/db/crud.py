@@ -18,8 +18,11 @@ def _validate_cookie_format(cookie_data: str) -> bool:
         # 支持多段 Cookie（用 | 分隔）
         if '|' in cookie_data:
             parts = cookie_data.split('|')
-            # 每一段都必须是 base64- 开头
-            return all(part.strip().startswith('base64-') for part in parts)
+            # 第一段必须是 base64- 开头，后续段只需非空
+            if not parts[0].strip().startswith('base64-'):
+                return False
+            # 检查后续段非空
+            return all(part.strip() for part in parts[1:])
         
         # 单段 Cookie：base64- 格式或 JSON 格式都允许
         if cookie_data.startswith('base64-') or cookie_data.startswith('{'):

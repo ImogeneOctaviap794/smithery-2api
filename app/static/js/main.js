@@ -196,10 +196,18 @@ async function submitAdd() {
     
     // 验证 Cookie 格式（支持单段或多段）
     const parts = cookieData.split('|');
-    for (const part of parts) {
-        if (!part.trim().startsWith('base64-') && !part.trim().startsWith('{')) {
-            showNotification('Cookie 格式不正确，应该是 base64- 开头。如果有多段，用 | 分隔', 'error');
-            return;
+    // 第一段必须以 base64- 或 { 开头
+    if (!parts[0].trim().startsWith('base64-') && !parts[0].trim().startsWith('{')) {
+        showNotification('Cookie 格式不正确，第一段应该是 base64- 开头', 'error');
+        return;
+    }
+    // 后续段只需要非空即可（已经去掉了base64-前缀）
+    if (parts.length > 1) {
+        for (let i = 1; i < parts.length; i++) {
+            if (!parts[i].trim()) {
+                showNotification('Cookie 格式不正确，有空段', 'error');
+                return;
+            }
         }
     }
     
