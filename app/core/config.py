@@ -14,17 +14,28 @@ _db_initialized = False
 class AuthCookie:
     """
     处理并生成 Smithery.ai 所需的认证 Cookie。
-    直接使用浏览器中的 Cookie 值，格式：sb-spjawbfpwezjfmicopsl-auth-token.0=base64-xxx
-    不需要解码，直接传给上游
+    Cookie 可能包含多个分段（.0, .1 等），需要全部包含
     """
     def __init__(self, cookie_value: str):
-        # Cookie 名称
-        cookie_name = "sb-spjawbfpwezjfmicopsl-auth-token.0"
+        """
+        cookie_value 格式：
+        - 单段：base64-xxx
+        - 多段（用 | 分隔）：base64-xxx|part1_value
+        """
+        # 检查是否有多段
+        if '|' in cookie_value:
+            parts = cookie_value.split('|')
+            # 构造多段 Cookie
+            cookie_parts = []
+            for i, part in enumerate(parts):
+                cookie_parts.append(f"sb-spjawbfpwezjfmicopsl-auth-token.{i}={part}")
+            self.header_cookie_string = "; ".join(cookie_parts)
+        else:
+            # 单段 Cookie
+            cookie_name = "sb-spjawbfpwezjfmicopsl-auth-token.0"
+            self.header_cookie_string = f"{cookie_name}={cookie_value}"
         
-        # 直接构造完整的 Cookie 字符串，不解码
-        self.header_cookie_string = f"{cookie_name}={cookie_value}"
-        
-        logger.debug(f"初始化 Cookie: {cookie_name}={cookie_value[:50]}...")
+        logger.debug(f"初始化 Cookie (长度: {len(self.header_cookie_string)})")
 
     def __repr__(self):
         return f"<AuthCookie>"

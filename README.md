@@ -60,9 +60,17 @@ docker-compose up -d
 
 1. 登录 [Smithery.ai](https://smithery.ai/)
 2. 按 `F12` → **Application** → **Cookies** → `https://smithery.ai`
-3. 找到 `sb-spjawbfpwezjfmicopsl-auth-token.0`
-4. 复制其 value 值（`base64-` 开头）
+3. 找到 `sb-spjawbfpwezjfmicopsl-auth-token.0` 和 `.1`（如果存在）
+4. 复制 Cookie 值：
+   - 如果只有 `.0`：直接复制 value（`base64-` 开头）
+   - 如果有 `.0` 和 `.1`：复制两个值，用 `|` 连接，例如：`base64-part0|base64-part1`
 5. 在管理页面点击"添加 Cookie"并粘贴
+
+**Cookie 示例**：
+```
+单段：base64-eyJhY2Nlc3NfdG9rZW4i...
+多段：base64-eyJhY2Nlc3NfdG9rZW4i...|SI6eyJhdmF0YXJfdXJs...
+```
 
 ## API 使用
 

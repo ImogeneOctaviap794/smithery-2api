@@ -10,12 +10,18 @@ from app.db.models import SmitheryCookie, APICallLog
 logger = logging.getLogger(__name__)
 
 def _validate_cookie_format(cookie_data: str) -> bool:
-    """验证 Cookie 格式是否正确（仅检查基本格式，不完整解码）"""
+    """验证 Cookie 格式是否正确（支持单段和多段）"""
     try:
         if not cookie_data or len(cookie_data) < 10:
             return False
         
-        # base64- 格式或 JSON 格式都允许
+        # 支持多段 Cookie（用 | 分隔）
+        if '|' in cookie_data:
+            parts = cookie_data.split('|')
+            # 每一段都必须是 base64- 开头
+            return all(part.strip().startswith('base64-') for part in parts)
+        
+        # 单段 Cookie：base64- 格式或 JSON 格式都允许
         if cookie_data.startswith('base64-') or cookie_data.startswith('{'):
             return True
         

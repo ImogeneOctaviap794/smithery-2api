@@ -194,9 +194,13 @@ async function submitAdd() {
         return;
     }
     
-    if (!cookieData.startsWith('base64-') && !cookieData.startsWith('{')) {
-        showNotification('Cookie 格式不正确，应该是 base64- 开头', 'error');
-        return;
+    // 验证 Cookie 格式（支持单段或多段）
+    const parts = cookieData.split('|');
+    for (const part of parts) {
+        if (!part.trim().startsWith('base64-') && !part.trim().startsWith('{')) {
+            showNotification('Cookie 格式不正确，应该是 base64- 开头。如果有多段，用 | 分隔', 'error');
+            return;
+        }
     }
     
     try {
