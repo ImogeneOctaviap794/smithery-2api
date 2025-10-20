@@ -104,20 +104,22 @@ class SmitheryProvider(BaseProvider):
         
         # 2. 将其转换为 Smithery.ai 后端所需的格式
         smithery_formatted_messages = self._convert_messages_to_smithery_format(messages_from_client)
+        
+        # 3. 准备请求
+        model = request_data.get("model", "claude-haiku-4.5")
+        payload = self._prepare_payload(model, smithery_formatted_messages)
+        headers = self._prepare_headers()
+        
+        request_id = f"chatcmpl-{uuid.uuid4()}"
+        start_time = time.time()
+        cookie_id = self.current_cookie_id
 
         async def stream_generator() -> AsyncGenerator[bytes, None]:
-            request_id = f"chatcmpl-{uuid.uuid4()}"
-            model = request_data.get("model", "claude-haiku-4.5")
-            start_time = time.time()
-            cookie_id = self.current_cookie_id
             completion_tokens = 0
+            http_error_handled = False
             
             try:
-                # 3. 使用转换后的消息列表准备请求体
-                payload = self._prepare_payload(model, smithery_formatted_messages)
-                headers = self._prepare_headers()
-
-                # 使用 httpx 异步发送请求，启用流式传输
+                # 使用 httpx 异步发送流式请求
                 async with self.client.stream(
                     "POST",
                     settings.CHAT_API_URL,
@@ -125,12 +127,25 @@ class SmitheryProvider(BaseProvider):
                     json=payload,
                 ) as response:
                     
-                    if response.status_code != 200:
+                    # 检查认证和权限错误（在开始流式传输前）
+                    if response.status_code == 401:
+                        http_error_handled = True
+                        logger.error("认证失败：Cookie 可能已过期")
+                        raise HTTPException(status_code=401, detail="认证失败，Cookie可能已过期")
+                    elif response.status_code == 403:
+                        http_error_handled = True
+                        logger.error("权限不足")
+                        raise HTTPException(status_code=403, detail="权限不足")
+                    elif response.status_code >= 400:
+                        http_error_handled = True
                         error_text = await response.aread()
                         logger.error(f"Smithery API 错误: {response.status_code} - {error_text[:200]}")
-                        response.raise_for_status()
+                        raise HTTPException(
+                            status_code=response.status_code,
+                            detail=f"上游API错误 ({response.status_code}): {error_text[:100].decode('utf-8', errors='ignore')}"
+                        )
 
-                    # 4. 异步流式处理 - 逐行实时转发
+                    # 流式处理 - 逐行实时转发
                     async for line in response.aiter_lines():
                         if not line:
                             continue
@@ -152,18 +167,24 @@ class SmitheryProvider(BaseProvider):
                                 # 静默跳过无法解析的数据
                                 pass
                 
-                # 5. 发送结束标志
-                final_chunk = create_chat_completion_chunk(request_id, model, "", "stop")
-                yield create_sse_data(final_chunk)
-                yield DONE_CHUNK
-                
-                # 6. 记录调用日志
-                duration_ms = int((time.time() - start_time) * 1000)
-                self._log_api_call(cookie_id, model, len(str(messages_from_client)), completion_tokens, "success", None, duration_ms)
+                    # 发送结束标志
+                    final_chunk = create_chat_completion_chunk(request_id, model, "", "stop")
+                    yield create_sse_data(final_chunk)
+                    yield DONE_CHUNK
+                    
+                    # 记录成功调用日志
+                    duration_ms = int((time.time() - start_time) * 1000)
+                    self._log_api_call(cookie_id, model, len(str(messages_from_client)), completion_tokens, "success", None, duration_ms)
 
+            except HTTPException:
+                # HTTP 异常直接向上抛出，不包装成 SSE
+                duration_ms = int((time.time() - start_time) * 1000)
+                self._log_api_call(cookie_id, model, len(str(messages_from_client)), 0, "error", "HTTP错误", duration_ms)
+                raise
             except Exception as e:
-                logger.error(f"处理流时发生错误: {e}", exc_info=True)
-                error_message = f"内部服务器错误: {str(e)}"
+                # 只有流式传输中的错误才包装成 SSE 响应
+                logger.error(f"流式传输错误: {e}", exc_info=True)
+                error_message = f"流式传输错误: {str(e)}"
                 error_chunk = create_chat_completion_chunk(request_id, model, error_message, "stop")
                 yield create_sse_data(error_chunk)
                 yield DONE_CHUNK
