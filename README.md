@@ -81,7 +81,34 @@ base64-eyJhY2Nlc3NfdG9rZW4i...|SI6eyJhdmF0YXJfdXJs...
 
 ## API 使用
 
-### cURL 示例
+### 添加 Cookie（API方式）
+
+可以通过API直接添加Cookie，无需登录管理页面：
+
+```bash
+curl -X POST "http://localhost:8088/v1/cookies/add" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-api-key" \
+  -d '{
+    "name": "主账号",
+    "cookie_data": "base64-eyJhY2Nlc3M...|SI6eyJhdmF0YXJ..."
+  }'
+```
+
+响应示例：
+```json
+{
+  "success": true,
+  "message": "Cookie 添加成功",
+  "data": {
+    "id": 1,
+    "name": "主账号",
+    "is_active": true
+  }
+}
+```
+
+### 聊天补全
 
 ```bash
 curl -X POST "http://localhost:8088/v1/chat/completions" \

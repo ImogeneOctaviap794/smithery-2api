@@ -83,6 +83,57 @@ async def chat_completions(request: Request) -> StreamingResponse:
 async def list_models():
     return await provider.get_models()
 
+@app.post("/v1/cookies/add", dependencies=[Depends(verify_api_key)])
+async def add_cookie_via_api(request: Request):
+    """
+    通过 API 添加 Cookie（使用 API_MASTER_KEY 认证）
+    
+    请求体示例：
+    {
+        "name": "主账号",
+        "cookie_data": "base64-xxx|yyy"
+    }
+    """
+    try:
+        from app.db.database import SessionLocal
+        from app.db import crud
+        from app.core.config import reload_cookies_from_db
+        
+        data = await request.json()
+        name = data.get("name")
+        cookie_data = data.get("cookie_data")
+        
+        if not name or not cookie_data:
+            raise HTTPException(status_code=400, detail="缺少必要参数：name 和 cookie_data")
+        
+        db = SessionLocal()
+        try:
+            # 创建 Cookie
+            db_cookie = crud.create_cookie(db, name, cookie_data)
+            
+            # 重新加载配置
+            reload_cookies_from_db()
+            
+            return {
+                "success": True,
+                "message": "Cookie 添加成功",
+                "data": {
+                    "id": db_cookie.id,
+                    "name": db_cookie.name,
+                    "is_active": db_cookie.is_active
+                }
+            }
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        finally:
+            db.close()
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"添加 Cookie 失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"添加失败: {str(e)}")
+
 @app.get("/", summary="根路径")
 def root():
     cookie_count = len(settings.AUTH_COOKIES)
@@ -96,4 +147,4 @@ def root():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8088)
+    uvicorn.run(app, host="0.0.0.0", port=8089)
