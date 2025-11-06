@@ -194,20 +194,27 @@ async function submitAdd() {
         return;
     }
     
-    // 验证 Cookie 格式（支持单段或多段）
-    const parts = cookieData.split('|');
-    // 第一段必须以 base64- 或 { 开头
-    if (!parts[0].trim().startsWith('base64-') && !parts[0].trim().startsWith('{')) {
-        showNotification('Cookie 格式不正确，第一段应该是 base64- 开头', 'error');
-        return;
+    // 验证 Cookie 格式（支持多种格式）
+    // 格式1：完整Cookie字符串（包含所有Cookie，用分号分隔）- 最简单
+    if (cookieData.includes('=') && cookieData.includes(';')) {
+        if (!cookieData.includes('sb-spjawbfpwezjfmicopsl-auth-token')) {
+            showNotification('Cookie中缺少必需的auth-token', 'error');
+            return;
+        }
     }
-    // 后续段只需要非空即可（已经去掉了base64-前缀）
-    if (parts.length > 1) {
-        for (let i = 1; i < parts.length; i++) {
-            if (!parts[i].trim()) {
-                showNotification('Cookie 格式不正确，有空段', 'error');
-                return;
-            }
+    // 格式2：多段拼接（用 | 分隔）
+    else if (cookieData.includes('|')) {
+        const parts = cookieData.split('|');
+        if (!parts[0].trim().startsWith('base64-')) {
+            showNotification('Cookie 格式不正确，第一段应该是 base64- 开头', 'error');
+            return;
+        }
+    }
+    // 格式3：单段
+    else {
+        if (!cookieData.trim().startsWith('base64-') && !cookieData.trim().startsWith('{') && !cookieData.includes('=')) {
+            showNotification('Cookie 格式不正确', 'error');
+            return;
         }
     }
     

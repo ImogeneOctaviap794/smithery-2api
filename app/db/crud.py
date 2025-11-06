@@ -10,12 +10,22 @@ from app.db.models import SmitheryCookie, APICallLog
 logger = logging.getLogger(__name__)
 
 def _validate_cookie_format(cookie_data: str) -> bool:
-    """验证 Cookie 格式是否正确（支持单段和多段）"""
+    """验证 Cookie 格式是否正确（支持多种格式）"""
     try:
         if not cookie_data or len(cookie_data) < 10:
             return False
         
-        # 支持多段 Cookie（用 | 分隔）
+        # 格式1：完整Cookie字符串（包含key=value，用分号分隔）
+        # 例如：sb-spjawbfpwezjfmicopsl-auth-token.0=base64-xxx;ph_phc_xxx=yyy
+        if '=' in cookie_data and ';' in cookie_data:
+            # 检查是否包含必需的auth-token
+            return 'sb-spjawbfpwezjfmicopsl-auth-token' in cookie_data
+        
+        # 格式2：仅key=value格式（单个Cookie）
+        if '=' in cookie_data and not cookie_data.startswith('base64-'):
+            return 'sb-spjawbfpwezjfmicopsl-auth-token' in cookie_data or cookie_data.startswith('{')
+        
+        # 格式3：多段拼接（用 | 分隔）
         if '|' in cookie_data:
             parts = cookie_data.split('|')
             # 第一段必须是 base64- 开头，后续段只需非空
@@ -24,7 +34,7 @@ def _validate_cookie_format(cookie_data: str) -> bool:
             # 检查后续段非空
             return all(part.strip() for part in parts[1:])
         
-        # 单段 Cookie：base64- 格式或 JSON 格式都允许
+        # 格式4：单段 Cookie值：base64- 格式或 JSON 格式
         if cookie_data.startswith('base64-') or cookie_data.startswith('{'):
             return True
         

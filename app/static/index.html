@@ -173,9 +173,14 @@
                     <label class="label">
                         <span class="label-text">Cookie 数据</span>
                     </label>
-                    <textarea id="addCookieData" placeholder="粘贴完整的 Cookie 值（base64- 开头）&#10;&#10;如果被分段存储（.0 .1），用 | 连接：&#10;base64-xxx|yyy（注意.1段不含base64-前缀）" class="textarea textarea-bordered h-32"></textarea>
+                    <textarea id="addCookieData" placeholder="方法1（推荐）：直接复制浏览器中所有Cookie&#10;sb-spjawbfpwezjfmicopsl-auth-token.0=base64-xxx;sb-spjawbfpwezjfmicopsl-auth-token.1=yyy;ph_phc_xxx=zzz&#10;&#10;方法2：仅复制auth-token&#10;base64-xxx|yyy" class="textarea textarea-bordered h-32"></textarea>
                     <label class="label">
-                        <span class="label-text-alt">提示：复制 .0 的完整值，然后加 | ，再复制 .1 的完整值（如果存在）</span>
+                        <span class="label-text-alt">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            推荐方法1：包含PostHog追踪Cookie，避免403错误
+                        </span>
                     </label>
                 </div>
             </div>

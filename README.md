@@ -58,26 +58,30 @@ docker-compose up -d
 
 ### 5. 添加 Cookie
 
+#### 方法1：直接复制完整Cookie（推荐）
+
 1. 登录 [Smithery.ai](https://smithery.ai/)
 2. 按 `F12` → **Application** → **Cookies** → `https://smithery.ai`
-3. 找到 `sb-spjawbfpwezjfmicopsl-auth-token.0` 和 `.1`（如果存在）
-4. 复制 Cookie 值：
-   - 如果只有 `.0`：直接复制 value（`base64-` 开头）
-   - 如果有 `.0` 和 `.1`：
-     - 复制 `.0` 的完整值（含 `base64-` 前缀）
-     - 添加 `|` 分隔符
-     - 复制 `.1` 的完整值（**不含** `base64-` 前缀，直接拼接）
-5. 在管理页面点击"添加 Cookie"并粘贴
+3. 全选所有Cookie，右键 → **复制所有Cookie**
+4. 在管理页面粘贴完整Cookie字符串
+
+**优势**：
+- 最简单，一次复制所有Cookie
+- 包含PostHog追踪Cookie，避免403错误
+- 无需手动拼接
 
 **Cookie 示例**：
 ```
-单段：
-base64-eyJhY2Nlc3NfdG9rZW4i...
-
-多段（注意.1段没有base64-前缀）：
-base64-eyJhY2Nlc3NfdG9rZW4i...|SI6eyJhdmF0YXJfdXJs...
-       ↑ .0段（含前缀）         ↑ .1段（不含前缀）
+sb-spjawbfpwezjfmicopsl-auth-token.0=base64-eyJhY2Nlc...; sb-spjawbfpwezjfmicopsl-auth-token.1=SI6eyJhdmF0...; ph_phc_WiMP1Rj0YvrdwYVYdE0AdRBNmB8MTdbsWY8oalxSrts_posthog=%7B%22distinct_id%22%3A%22df6e...
 ```
+
+#### 方法2：仅复制auth-token（手动拼接）
+
+1. 找到 `sb-spjawbfpwezjfmicopsl-auth-token.0` 的值
+2. 找到 `sb-spjawbfpwezjfmicopsl-auth-token.1` 的值（如果存在）
+3. 用 `|` 连接：`base64-xxx|yyy`
+
+**注意**：此方法可能导致403错误（缺少PostHog追踪）
 
 ## API 使用
 
