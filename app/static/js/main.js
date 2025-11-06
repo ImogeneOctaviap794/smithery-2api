@@ -194,28 +194,10 @@ async function submitAdd() {
         return;
     }
     
-    // 验证 Cookie 格式（支持多种格式）
-    // 格式1：完整Cookie字符串（包含所有Cookie，用分号分隔）- 最简单
-    if (cookieData.includes('=') && cookieData.includes(';')) {
-        if (!cookieData.includes('sb-spjawbfpwezjfmicopsl-auth-token')) {
-            showNotification('Cookie中缺少必需的auth-token', 'error');
-            return;
-        }
-    }
-    // 格式2：多段拼接（用 | 分隔）
-    else if (cookieData.includes('|')) {
-        const parts = cookieData.split('|');
-        if (!parts[0].trim().startsWith('base64-')) {
-            showNotification('Cookie 格式不正确，第一段应该是 base64- 开头', 'error');
-            return;
-        }
-    }
-    // 格式3：单段
-    else {
-        if (!cookieData.trim().startsWith('base64-') && !cookieData.trim().startsWith('{') && !cookieData.includes('=')) {
-            showNotification('Cookie 格式不正确', 'error');
-            return;
-        }
+    // 基本验证：只检查非空
+    if (!cookieData || cookieData.trim().length < 10) {
+        showNotification('Cookie 不能为空', 'error');
+        return;
     }
     
     try {
