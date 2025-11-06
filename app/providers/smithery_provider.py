@@ -12,7 +12,7 @@ from app.core.config import settings
 from app.providers.base_provider import BaseProvider
 from app.utils.sse_utils import create_sse_data, create_chat_completion_chunk, DONE_CHUNK
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - [%(levelname)s] - %(message)s')
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - [%(levelname)s] - %(message)s')
 logger = logging.getLogger(__name__)
 
 class SmitheryProvider(BaseProvider):
@@ -113,10 +113,41 @@ class SmitheryProvider(BaseProvider):
         request_id = f"chatcmpl-{uuid.uuid4()}"
         start_time = time.time()
         cookie_id = self.current_cookie_id
+        
+        # 预检查：先发送请求检查认证（不等待完整响应）
+        logger.info(f"发送请求到 Smithery - Model: {model}")
+        logger.debug(f"请求头: {json.dumps({k: v[:50] + '...' if len(v) > 50 else v for k, v in headers.items()}, indent=2)}")
+        
+        try:
+            test_response = await self.client.post(
+                settings.CHAT_API_URL,
+                headers=headers,
+                json=payload,
+                timeout=2.0
+            )
+            # 如果是认证/权限错误，立即抛出（在返回StreamingResponse之前）
+            if test_response.status_code == 401:
+                logger.error("认证失败：Cookie可能已过期")
+                raise HTTPException(status_code=401, detail="认证失败，Cookie可能已过期")
+            elif test_response.status_code == 403:
+                logger.error("权限不足：Cookie可能缺少必要信息")
+                raise HTTPException(status_code=403, detail="权限不足，请复制完整的Cookie（包含PostHog）")
+            elif test_response.status_code >= 400:
+                error_text = test_response.text[:200] if hasattr(test_response, 'text') else str(test_response.status_code)
+                logger.error(f"上游API错误: {test_response.status_code} - {error_text}")
+                raise HTTPException(
+                    status_code=test_response.status_code,
+                    detail=f"上游API错误: {error_text}"
+                )
+        except httpx.TimeoutException:
+            # 超时是正常的（响应开始了但没完成），继续流式请求
+            pass
+        except httpx.HTTPError as e:
+            logger.error(f"HTTP请求错误: {e}")
+            raise HTTPException(status_code=502, detail=f"网络错误: {str(e)}")
 
         async def stream_generator() -> AsyncGenerator[bytes, None]:
             completion_tokens = 0
-            http_error_handled = False
             
             try:
                 # 使用 httpx 异步发送流式请求
@@ -126,24 +157,6 @@ class SmitheryProvider(BaseProvider):
                     headers=headers,
                     json=payload,
                 ) as response:
-                    
-                    # 检查认证和权限错误（在开始流式传输前）
-                    if response.status_code == 401:
-                        http_error_handled = True
-                        logger.error("认证失败：Cookie 可能已过期")
-                        raise HTTPException(status_code=401, detail="认证失败，Cookie可能已过期")
-                    elif response.status_code == 403:
-                        http_error_handled = True
-                        logger.error("权限不足")
-                        raise HTTPException(status_code=403, detail="权限不足")
-                    elif response.status_code >= 400:
-                        http_error_handled = True
-                        error_text = await response.aread()
-                        logger.error(f"Smithery API 错误: {response.status_code} - {error_text[:200]}")
-                        raise HTTPException(
-                            status_code=response.status_code,
-                            detail=f"上游API错误 ({response.status_code}): {error_text[:100].decode('utf-8', errors='ignore')}"
-                        )
 
                     # 流式处理 - 逐行实时转发
                     async for line in response.aiter_lines():
@@ -206,6 +219,7 @@ class SmitheryProvider(BaseProvider):
         """准备请求头，包含动态的用户ID和会话ID"""
         # 获取当前Cookie并解析用户ID
         cookie_str = self._get_cookie()
+        logger.debug(f"使用Cookie（前100字符）: {cookie_str[:100]}...")
         
         # 尝试从当前使用的Cookie中获取用户ID
         user_id = None
