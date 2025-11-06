@@ -203,24 +203,58 @@ class SmitheryProvider(BaseProvider):
         )
 
     def _prepare_headers(self) -> Dict[str, str]:
+        """准备请求头，包含动态的用户ID和会话ID"""
+        # 获取当前Cookie并解析用户ID
+        cookie_str = self._get_cookie()
+        
+        # 尝试从当前使用的Cookie中获取用户ID
+        user_id = None
+        try:
+            from app.db.database import SessionLocal
+            from app.db import crud
+            if self.current_cookie_id:
+                db = SessionLocal()
+                try:
+                    db_cookie = crud.get_cookie_by_id(db, self.current_cookie_id)
+                    if db_cookie:
+                        from app.core.config import AuthCookie
+                        auth_obj = AuthCookie(db_cookie.cookie_data)
+                        user_id = auth_obj.user_id
+                finally:
+                    db.close()
+        except:
+            pass
+        
+        # 如果无法获取用户ID，使用默认值
+        if not user_id:
+            user_id = "00000000-0000-0000-0000-000000000000"
+        
+        # 生成随机的会话ID和窗口ID（ULID格式）
+        import random
+        session_id = f"019a{random.randint(1000, 9999):04x}-{random.randint(1000, 9999):04x}-{random.randint(1000, 9999):04x}-{random.randint(1000, 9999):04x}-{random.randint(100000000000, 999999999999):012x}"
+        window_id = f"019a{random.randint(1000, 9999):04x}-{random.randint(1000, 9999):04x}-{random.randint(1000, 9999):04x}-{random.randint(1000, 9999):04x}-{random.randint(100000000000, 999999999999):012x}"
+        
         # 模拟真实浏览器请求头
         return {
             "Accept": "*/*",
             "Accept-Language": "zh-CN,zh-TW;q=0.9,zh;q=0.8,en;q=0.7",
             "Cache-Control": "no-cache",
             "Content-Type": "application/json",
-            "Cookie": self._get_cookie(),
+            "Cookie": cookie_str,
             "Origin": "https://smithery.ai",
             "Pragma": "no-cache",
             "Priority": "u=1, i",
-            "Referer": "https://smithery.ai/playground",
+            "Referer": "https://smithery.ai/chat",
             "Sec-Ch-Ua": '"Google Chrome";v="141", "Not?A_Brand";v="8", "Chromium";v="141"',
             "Sec-Ch-Ua-Mobile": "?0",
             "Sec-Ch-Ua-Platform": '"macOS"',
             "Sec-Fetch-Dest": "empty",
             "Sec-Fetch-Mode": "cors",
             "Sec-Fetch-Site": "same-origin",
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+            "X-Posthog-Distinct-Id": user_id,
+            "X-Posthog-Session-Id": session_id,
+            "X-Posthog-Window-Id": window_id
         }
 
     def _prepare_payload(self, model: str, messages: List[Dict[str, Any]]) -> Dict[str, Any]:

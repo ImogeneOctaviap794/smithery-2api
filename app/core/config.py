@@ -41,9 +41,26 @@ class AuthCookie:
             # 单段 Cookie
             self.header_cookie_string = f"{cookie_name}={cookie_value.strip()}"
             logger.debug(f"初始化单段Cookie，长度: {len(cookie_value)}")
+        
+        # 尝试解析 Cookie 获取用户ID（用于 posthog）
+        self.user_id = None
+        try:
+            import base64
+            import json
+            # 移除 base64- 前缀
+            complete_val = ''.join(cookie_value.split('|')) if '|' in cookie_value else cookie_value
+            if complete_val.startswith('base64-'):
+                encoded = complete_val[7:]  # 移除 "base64-"
+                decoded = base64.b64decode(encoded + '==')  # 添加padding
+                data = json.loads(decoded)
+                if 'user' in data and 'id' in data['user']:
+                    self.user_id = data['user']['id']
+                    logger.debug(f"解析到用户ID: {self.user_id}")
+        except Exception as e:
+            logger.debug(f"无法解析用户ID: {e}")
 
     def __repr__(self):
-        return f"<AuthCookie>"
+        return f"<AuthCookie user_id={self.user_id}>"
 
 
 class Settings(BaseSettings):
